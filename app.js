@@ -7,6 +7,9 @@ const securityMiddleware = require('./middlewares/securityMiddleware');
 const { errorNotFound, errorHandler } = require('./middlewares/error');
 require("dotenv").config();
 const cors = require('cors');
+const session = require('express-session');
+
+
 
 
 
@@ -19,18 +22,20 @@ var ordersRouter = require('./routes/orders');
 var shippingCompanyRouter = require('./routes/Shipping-company');
 var reviewRouter = require('./routes/reviewRoutes');
 var adminRouter = require('./routes/admin');
+var withdrawal = require('./routes/withdrawal');
 
 
 var app = express();
 
 content();
 
-
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'auth-token'],
-  exposedHeaders: ['auth-token']
+    origin: 'http://localhost:3000', 
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'auth-token', 'X-CSRF-Token'],
+    exposedHeaders: ['auth-token'],
+  credentials: true 
+    
 }));
 
 const compression = require("compression")
@@ -39,8 +44,14 @@ app.use(compression())
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: 'سر-قوي-هنا',
+  resave: true,
+  saveUninitialized: true
+}));
 app.use(cookieParser());
-app.use(securityMiddleware);
+// app.use(securityMiddleware);
+securityMiddleware(app)
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -49,10 +60,11 @@ app.use('/forgetpassword', forgetpasswordRouter);
 app.use('/productMerchant', productMerchantRouter);
 app.use('/productUser', productUserRouter);
 app.use('/category', categoryRouter);
+app.use('/admin', adminRouter);
+app.use('/review', reviewRouter);
 app.use('/orders', ordersRouter);
 app.use('/shippingCompany', shippingCompanyRouter);
-app.use('/review', reviewRouter);
-app.use('/admin', adminRouter);
+app.use('/withdrawal', withdrawal);
 
 // catch 404 and forward to error handler
 app.use(errorNotFound);

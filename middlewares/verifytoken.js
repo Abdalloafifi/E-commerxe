@@ -23,7 +23,7 @@ const decryptToken = (encryptedToken) => {
 };
 
 const verifyToken = async (req, res, next) => {
-    const encryptedToken = req.headers['auth-token'];
+    const encryptedToken = req.headers['auth-token'] ||req.cookies['auth-token'];
 
     if (!encryptedToken) {
         return res.status(403).json({ message: 'Token is required' });

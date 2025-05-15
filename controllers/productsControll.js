@@ -3,162 +3,203 @@ const Category = require('../models/category');
 const asyncHandler = require('express-async-handler');
 const xss = require('xss');
 const Joi = require('joi');
-const cloudinary = require("../config/cloudinary"); 
+const mongoose = require('mongoose');
+const cloudinary = require('../config/cloudinary');
 
-
-const merchant=(req, res, next) => {
+// Middleware to check merchant role
+const merchant = (req, res, next) => {
   if (req.user.role !== 'merchant') {
     return res.status(403).json({ message: 'Access denied' });
   }
   next();
-}
-exports.addProduct = [ merchant,asyncHandler(async (req, res) => {
+};
+
+// Validation schemas
+const addProductSchema = Joi.object({
+  name: Joi.string().required(),
+  description: Joi.string().required(),
+  price: Joi.number().required(),
+  category: Joi.string().required(),
+  stockQuantity: Joi.number().required(),
+  Address: Joi.string().required(),
+});
+
+const updateProductSchema = Joi.object({
+  name: Joi.string().required(),
+  description: Joi.string().required(),
+  price: Joi.number().required(),
+  category: Joi.string().required(),
+  stockQuantity: Joi.number().required(),
+});
+
+// Add Product
+exports.addProduct = [
+  merchant,
+  asyncHandler(async (req, res) => {
+    // Sanitize and parse input
     const data = {
-        name: xss(req.body.name),
-        description: xss(req.body.description),
-        price: xss(req.body.price),
-        category: xss(req.body.category),
-        stockQuantity: xss(req.body.stockQuantity),
-        Address: xss(req.body.Address),
-
+      name: xss(req.body.name),
+      description: xss(req.body.description),
+      Address: xss(req.body.Address),
+      price: parseFloat(req.body.price),
+      category: req.body.category,
+      stockQuantity: parseInt(req.body.stockQuantity, 10),
     };
-    const error = valiAddProduct(data);
+
+    // Validate
+    const { error } = addProductSchema.validate(data);
     if (error) {
-        res.status(400).json({ message: error.details[0].message });
-        return;
+      return res.status(400).json({ message: error.details[0].message });
     }
-    const category = await Category.findOne({ _id: data.category });
+
+    // Validate Category ID
+    if (!mongoose.Types.ObjectId.isValid(data.category)) {
+      return res.status(400).json({ message: 'Category ID غير صالح' });
+    }
+    const category = await Category.findById(data.category);
     if (!category) {
-        res.status(400).json({ message: 'Category not found' });
-        return;
+      return res.status(400).json({ message: 'Category not found' });
     }
+
+    // Check files
     if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: 'يجب رفع ملف واحد على الأقل' });
+      return res.status(400).json({ error: 'يجب رفع ملف واحد على الأقل' });
     }
 
-
+    // Upload to Cloudinary
     const cloudinaryFolder = `users/${req.user._id}/products`;
-    const uploadPromises = req.files.map((file) => {
-        return new Promise((resolve, reject) => {
-            cloudinary.uploader.upload_stream(
-                {
-                    folder: cloudinaryFolder,
-                    resource_type: 'auto',
-                },
-                (error, result) => {
-                    if (error) {
-                        console.error('❌ فشل رفع الملف:', error);
-                        return reject(new Error(`فشل رفع الملف: ${file.originalname}`));
-                    }
-                    resolve(result.secure_url);
-                }
-            ).end(file.buffer);
-        });
-    });
+    const uploadPromises = req.files.map(file =>
+      new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { folder: cloudinaryFolder, resource_type: 'auto' },
+          (error, result) => {
+            if (error) return reject(new Error(`فشل رفع الملف: ${file.originalname}`));
+            resolve(result.secure_url);
+          }
+        ).end(file.buffer);
+      })
+    );
 
     const uploadedUrls = await Promise.all(uploadPromises);
-    // 5. تحديث البيانات في MongoDB
+
+    // Create
     const product = await Product.create({
-        name: data.name,
-        description: data.description,
-        price: data.price,
-        category: data.category,
-        stockQuantity: data.stockQuantity,
-        imageUrl: uploadedUrls,
-        user: req.user._id,
-        Address: data.Address,  
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      category: data.category,
+      stockQuantity: data.stockQuantity,
+      imageUrl: uploadedUrls,
+      author: req.user._id,
+      Address: data.Address,
     });
-    res.status(201).json({ message: 'تم إضافة المنتج بنجاح' }); 
 
-})];
-function valiAddProduct(data) {
-    const schema = Joi.object({
-        name: Joi.string().required(),
-        description: Joi.string().required(),
-        price: Joi.number().required(),
-        category: Joi.string().required(),
-        stockQuantity: Joi.number().required(),
-        Address: Joi.string().required(),
-    });
-    return schema.validate(data);
-}
-exports.updateProduct = [ merchant,asyncHandler(async (req, res) => {
+    res.status(201).json({ message: 'تم إضافة المنتج بنجاح', product });
+  }),
+];
+
+// Update Product
+exports.updateProduct = [
+  merchant,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    // Check valid ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Product ID غير صالح' });
+    }
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    // Authorization
+    if (product.author.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You are not the author of this product' });
+    }
+
+    // Sanitize and parse
     const data = {
-        name: xss(req.body.name),
-        description: xss(req.body.description),
-        price: xss(req.body.price),
-        category: xss(req.body.category),
-        stockQuantity: xss(req.body.stockQuantity),
+      name: xss(req.body.name),
+      description: xss(req.body.description),
+      price: parseFloat(req.body.price),
+      category: req.body.category,
+      stockQuantity: parseInt(req.body.stockQuantity, 10),
     };
-    const error = valiUpdateProduct(data);
+
+    // Validate
+    const { error } = updateProductSchema.validate(data);
     if (error) {
-        res.status(400).json({ message: error.details[0].message });
-        return;
+      return res.status(400).json({ message: error.details[0].message });
     }
-    const category = await Category.findOne({ _id: data.category });
+
+    // Validate Category
+    if (!mongoose.Types.ObjectId.isValid(data.category)) {
+      return res.status(400).json({ message: 'Category ID غير صالح' });
+    }
+    const category = await Category.findById(data.category);
     if (!category) {
-        res.status(400).json({ message: 'Category not found' });
-        return;
+      return res.status(400).json({ message: 'Category not found' });
     }
-    const product = await Product.findOne({ _id: req.params.id });
+
+    // Update fields
+    product.name = data.name;
+    product.description = data.description;
+    product.price = data.price;
+    product.category = data.category;
+    product.stockQuantity = data.stockQuantity;
+
+    // Optionally handle new images upload if needed here
+
+    await product.save();
+
+    res.status(200).json({ message: 'Product updated successfully', product });
+  }),
+];
+
+// Delete Product
+exports.deleteProduct = [
+  merchant,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Product ID غير صالح' });
+    }
+    const product = await Product.findById(id);
     if (!product) {
-        res.status(400).json({ message: 'Product not found' });
-        return;
+      return res.status(404).json({ message: 'Product not found' });
     }
+
     if (product.author.toString() !== req.user._id.toString()) {
-        res.status(400).json({ message: 'You are not the author of this product' });
-        return;
+      return res.status(403).json({ message: 'You are not the author of this product' });
     }
-    await Product.updateOne({ _id: req.params.id }, {
-        name: data.name,
-        description: data.description,
-        price: data.price,
-        category: data.category,
-        stockQuantity: data.stockQuantity,
-        imageUrl: data.image,
+
+    // Delete from Cloudinary
+    const publicIds = product.imageUrl.map(url => {
+      const parts = url.split('/');
+      const filename = parts[parts.length - 1];
+      return filename.split('.')[0];
     });
-    res.status(201).json({ message: 'Product updated successfully' });
-})];
-  
-function valiUpdateProduct(data) {
-    const schema = Joi.object({
-        name: Joi.string().required(),
-        description: Joi.string().required(),
-        price: Joi.number().required(),
-        category: Joi.string().required(),
-        stockQuantity: Joi.number().required(),
-    });
-    return schema.validate(data);
-}
-exports.deleteProduct = [ merchant,asyncHandler(async (req, res) => {
-    const product = await Product.findOne({ _id: req.params.id });
-    if (!product) {
-        res.status(400).json({ message: 'Product not found' });
-        return;
-    }
-    if (product.author.toString() !== req.user._id.toString()) {
-        res.status(400).json({ message: 'You are not the author of this product' });
-        return;
-    }
-    // Delete imageUrl from Cloudinary
-    const publicIds = product.imageUrl.map((url) => url.split('/').pop().split('.')[0]);
-    const deletePromises = publicIds.map((publicId) => {
-        return new Promise((resolve, reject) => {
-            cloudinary.uploader.destroy(publicId, (error, result) => {
-                if (error) {
-                    return reject(new Error(`فشل حذف الصورة: ${publicId}`));
-                }
-                resolve(result);
-            });
+    await Promise.all(
+      publicIds.map(pid => new Promise((resolve, reject) => {
+        cloudinary.uploader.destroy(pid, (error, result) => {
+          if (error) return reject(new Error(`فشل حذف الصورة: ${pid}`));
+          resolve(result);
         });
-    });
-    await Promise.all(deletePromises);
-    await Product.deleteOne({ _id: req.params.id });
-    res.status(201).json({ message: 'Product deleted successfully' });
-})];
+      }))
+    );
 
-exports.getAllProductsMerchant = [merchant,asyncHandler(async (req, res) => {
-    const products = await Product.find({author: req.user._id});
-    res.json(products);
-})];
+    await product.remove();
+    res.status(200).json({ message: 'Product deleted successfully' });
+  }),
+];
 
+// Get Merchant's Products
+exports.getAllProductsMerchant = [
+  merchant,
+  asyncHandler(async (req, res) => {
+    const products = await Product.find({ author: req.user._id });
+    res.status(200).json(products);
+  }),
+];

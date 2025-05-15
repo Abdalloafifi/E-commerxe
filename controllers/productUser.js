@@ -11,33 +11,36 @@ const asyncHandler = require('express-async-handler');
  */
 
 exports.getAllProducts = asyncHandler(async (req, res) => {
-    const { search, price, category } = req.query;
-    if (!search && !price && !category) {
-        return res.status(400).json({ message: 'Please provide at least one search parameter' });
-    }
-    const query= {};
-    if (search) {
-        query.$or = [
-          { name:     { $regex: search, $options: 'i' } },
-          { category: { $regex: search, $options: 'i' } }
-        ];
-    }
-    if (price) {
-        const maxPrice = parseFloat(price);
-        if (isNaN(maxPrice)) {
-          return res.status(400).json({ message: 'قيمة price غير صالحة' });
-        }
-        query.price = { $gte: 0, $lte: maxPrice };
-      }
-      
-    if (category) {
-        query.category = category;
-    }
-    query.stockQuantity = { $gt: 0 };
+  const { search, price, category } = req.query;
 
-    const products = await Product.find(query);
-    res.status(200).json(products);
+  if (!search && !price && !category) {
+    return res.status(400).json({ message: 'Please provide at least one search parameter' });
+  }
+
+  const query = {};
+
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: 'i' } },
+    ];
+  } else if (category) {
+    query.category = category;
+  }
+
+  if (price) {
+    const maxPrice = parseFloat(price);
+    if (isNaN(maxPrice)) {
+      return res.status(400).json({ message: 'قيمة price غير صالحة' });
+    }
+    query.price = { $gte: 0, $lte: maxPrice };
+  }
+
+  query.stockQuantity = { $gt: 0 };
+
+  const products = await Product.find(query);
+  res.status(200).json(products);
 });
+
 
 
 

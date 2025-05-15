@@ -11,7 +11,8 @@ const cloudinary = require("../config/cloudinary");
 
 
 exports.register = asyncHandler(async (req, res) => {
-    const data = {
+   try {
+     const data = {
         username: xss(req.body.username),
         email: xss(req.body.email),
         password: xss(req.body.password),
@@ -58,14 +59,12 @@ exports.register = asyncHandler(async (req, res) => {
         text: `Your verification code is: ${randamnumber}`,
     };
 
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            return res.status(500).json({ error: "Failed to send email" });
-        }
-    });
-    res.status(200).json({ message: 'User created successfully Check your email' });
-});
-
+await transporter.sendMail(mailOptions);
+       res.status(201).json({ message: 'Registration successful' })
+    } catch (error) {
+       res.status(500).json({ error: "Internal server error" });
+    }
+}); 
 function validateRegister(data) {
     const schema = Joi.object({
         username: Joi.string().min(3).max(30).required(),
@@ -75,6 +74,7 @@ function validateRegister(data) {
     });
     return schema.validate(data);
 }
+
 exports.verify = asyncHandler(async (req, res) => {
     const data = {
         email: xss(req.body.email),
@@ -105,7 +105,6 @@ function validateVerify(data) {
     });
     return schema.validate(data);
 };
-
 
 exports.addphone = asyncHandler(async (req, res) => {
     const data = {
@@ -178,42 +177,41 @@ exports.deleteUser = asyncHandler(async (req, res) => {
     }
     res.status(200).json({ message: "User deleted successfully" });
 });
+
 exports.transformation= asyncHandler(async (req, res) => {
     
     try {
-        // 1. التأكد من وجود ملفات
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: 'يجب رفع ملف واحد على الأقل' });
+ if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'يجب رفع ملف واحد على الأقل' });
         }
-
+        
         // 2. التحقق من المستخدم الموثق
         const user = await Auth.findById(req.user._id);
         if (!user) {
             return res.status(404).json({ error: 'المستخدم غير موجود' });
         }
-
-        if (!user.documentation) {
+        
+        if (!user.isVerified) {
             return res.status(403).json({ error: 'يجب توثيق البريد الإلكتروني أولاً' });
         }
-        const cloudinaryFolder = `users/${user._id}/documents`;
-        // 4. رفع الملفات من الذاكرة إلى Cloudinary
-        const uploadPromises = req.files.map((file) => {
-            return new Promise((resolve, reject) => {
-                cloudinary.uploader.upload_stream(
-                    {
-                        folder: cloudinaryFolder,
-                        resource_type: 'auto',
-                    },
-                    (error, result) => {
-                        if (error) {
-                            console.error('❌ فشل رفع الملف:', error);
-                            return reject(new Error(`فشل رفع الملف: ${file.originalname}`));
-                        }
-                        resolve(result.secure_url);
-                    }
-                ).end(file.buffer);
-            });
-        });
+        const cloudinaryFolder = `users/${user.username}`;
+ const uploadPromises = req.files.map((file) => {
+      return new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: cloudinaryFolder,
+            resource_type: 'auto',
+          },
+          (error, result) => {
+            if (error) {
+              console.error('❌ فشل رفع الملف:', error);
+              return reject(new Error(`فشل رفع الملف: ${file.originalname}`));
+            }
+            resolve(result.secure_url);
+          }
+        ).end(file.buffer); // تأكد من استخدام buffer المعالج
+      });
+    });
 
         const uploadedUrls = await Promise.all(uploadPromises);
 
