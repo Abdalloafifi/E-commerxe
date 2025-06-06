@@ -43,7 +43,7 @@ exports.addProduct = [
       Address: xss(req.body.Address),
       price: parseFloat(req.body.price),
       category: req.body.category,
-      stockQuantity: parseInt(req.body.stockQuantity, 10),
+      stockQuantity: parseInt(req.body.stockQuantity),
     };
 
     // Validate

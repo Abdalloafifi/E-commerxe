@@ -1,7 +1,6 @@
 var express = require('express');
 var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+v
 const content = require("./config/conectet");
 const securityMiddleware = require('./middlewares/securityMiddleware');
 const { errorNotFound, errorHandler } = require('./middlewares/error');
@@ -26,6 +25,8 @@ var withdrawal = require('./routes/withdrawal');
 
 
 var app = express();
+securityMiddleware(app)
+
 
 content();
 
@@ -38,10 +39,8 @@ app.use(cors({
     
 }));
 
-const compression = require("compression")
-app.use(compression())
 
-app.use(logger('dev'));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
@@ -49,9 +48,7 @@ app.use(session({
   resave: true,
   saveUninitialized: true
 }));
-app.use(cookieParser());
-// app.use(securityMiddleware);
-securityMiddleware(app)
+
 
 app.use(express.static(path.join(__dirname, 'public')));
 
