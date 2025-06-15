@@ -1,6 +1,5 @@
 var express = require('express');
 var path = require('path');
-v
 const content = require("./config/conectet");
 const securityMiddleware = require('./middlewares/securityMiddleware');
 const { errorNotFound, errorHandler } = require('./middlewares/error');
